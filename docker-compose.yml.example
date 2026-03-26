@@ -1,0 +1,15 @@
+services:
+  tete-notifier:
+    image: yourdockerhub/teslamate-tete-notifier:latest
+    restart: unless-stopped
+    environment:
+      - API_TOKEN=${API_TOKEN}
+      - DATABASE_HOST=database
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASS=${DATABASE_PASS}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - MQTT_HOST=mosquitto
+      # ... 其他变量
+    depends_on:
+      - database
+      - mosquitto
