@@ -1,15 +1,16 @@
 services:
-  tete-notifier:
-    image: yourdockerhub/teslamate-tete-notifier:latest
-    restart: unless-stopped
+  tete-notifier-1:
+    image: wenryon/tete-notifier:latest
+    restart: always
     environment:
-      - API_TOKEN=${API_TOKEN}
+      - API_TOKEN= # 输入特特管家的推送API Token
       - DATABASE_HOST=database
-      - DATABASE_USER=${DATABASE_USER}
-      - DATABASE_PASS=${DATABASE_PASS}
-      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=teslamate
+      - DATABASE_PASS= # 输入数据库的用户密码
+      - DATABASE_NAME=teslamate
       - MQTT_HOST=mosquitto
-      # ... 其他变量
+      - CAR_ID=1 # 你的车辆ID，默认为1
+      - PUSH_DEBOUNCE_SECONDS=15 # 推送防抖动时间（秒）
     depends_on:
       - database
       - mosquitto
