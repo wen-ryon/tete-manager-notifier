@@ -24,10 +24,8 @@ type Config struct {
 }
 
 func Load() *Config {
-	err := godotenv.Load()
-	if err != nil {
-		panic(err)
-	}
+	_ = godotenv.Load()
+
 	return &Config{
 		APIToken:        os.Getenv("API_TOKEN"),
 		DBHost:          os.Getenv("DATABASE_HOST"),

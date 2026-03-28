@@ -31,9 +31,6 @@ func main() {
 		log.Fatalf("❌ MQTT 连接失败: %v", err)
 	}
 
-	// 启动 MQTT 消息处理
-	mqttClient.StartHandler()
-
 	log.Println("✅ MQTT 订阅已启动，等待车辆状态变化...")
 
 	// 优雅退出

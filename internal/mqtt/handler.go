@@ -9,28 +9,37 @@ import (
 
 	"github.com/wen-ryon/tete-manager-notifier/internal/config"
 	"github.com/wen-ryon/tete-manager-notifier/internal/db"
+	"github.com/wen-ryon/tete-manager-notifier/internal/models"
 	"github.com/wen-ryon/tete-manager-notifier/internal/notifier"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 type Client struct {
-	cfg           *config.Config
-	client        mqtt.Client
-	carName       string
-	lastDriveID   uint
-	lastChargeID  uint
-	lastSentry    bool
+	cfg             *config.Config
+	client          mqtt.Client
+	carName         string
+	lastDriveID     uint
+	lastChargeID    uint
+	lastShiftState  string
+	lastSentry      bool
+	lastUserPresent bool
+
 	mu            sync.Mutex
 	debounceTimer *time.Timer
+
+	// 指数退避重试计数
+	retryCountDrive  int
+	retryCountCharge int
 }
 
 func NewClient(cfg *config.Config) *Client {
 	return &Client{
-		cfg:          cfg,
-		lastDriveID:  0,
-		lastChargeID: 0,
-		lastSentry:   false,
+		cfg:             cfg,
+		lastDriveID:     0,
+		lastChargeID:    0,
+		lastSentry:      false,
+		lastUserPresent: true, // 初始假设人在车上，避免误触发
 	}
 }
 
@@ -41,10 +50,11 @@ func (c *Client) Connect() error {
 		AddBroker(broker).
 		SetUsername(c.cfg.MQTTUser).
 		SetPassword(c.cfg.MQTTPass).
-		SetClientID(fmt.Sprintf("tete-notifier-%d", c.cfg.CarID)).
+		SetClientID(fmt.Sprintf("tete-notifier-%d-%d", c.cfg.CarID, time.Now().Unix())). // 兼容多个客户端同时运行，避免相同的 ClientID 会导致两者互相踢下线
 		SetAutoReconnect(true).
 		SetKeepAlive(2 * time.Minute).
-		SetCleanSession(true)
+		SetCleanSession(true).
+		SetConnectRetry(true)
 
 	opts.OnConnect = func(client mqtt.Client) {
 		log.Println("✅ MQTT 已连接")
@@ -78,10 +88,6 @@ func (c *Client) Disconnect() {
 	}
 }
 
-func (c *Client) StartHandler() {
-	// 已通过 OnConnect 处理订阅
-}
-
 func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 	topic := msg.Topic()
 	payload := string(msg.Payload())
@@ -93,15 +99,32 @@ func (c *Client) messageHandler(client mqtt.Client, msg mqtt.Message) {
 		c.handleChargingState(payload)
 	case strings.HasSuffix(topic, "/sentry_mode"):
 		c.handleSentryMode(payload)
+	case strings.HasSuffix(topic, "/is_user_present"):
+		c.handleIsUserPresent(payload)
 	}
 }
 
-// ==================== 行程通知 ====================
+// ==================== 行程通知（P档 + 主驾下车 才触发 + 指数退避） ====================
 func (c *Client) handleShiftState(payload string) {
+	c.mu.Lock()
+	c.lastShiftState = payload
+	c.mu.Unlock()
+	c.checkTripEndCondition()
+}
+
+func (c *Client) handleIsUserPresent(payload string) {
+	c.mu.Lock()
+	c.lastUserPresent = (payload == "true")
+	c.mu.Unlock()
+	c.checkTripEndCondition()
+}
+
+func (c *Client) checkTripEndCondition() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if payload != "P" {
+	// 只有「P档 + 驾驶员已离座」才启动 debounce
+	if c.lastShiftState != "P" || c.lastUserPresent {
 		if c.debounceTimer != nil {
 			c.debounceTimer.Stop()
 		}
@@ -111,11 +134,36 @@ func (c *Client) handleShiftState(payload string) {
 	if c.debounceTimer != nil {
 		c.debounceTimer.Stop()
 	}
-
-	c.debounceTimer = time.AfterFunc(time.Duration(c.cfg.PushDebounceSec)*time.Second, c.processTripEnd)
+	c.debounceTimer = time.AfterFunc(
+		time.Duration(c.cfg.PushDebounceSec)*time.Second,
+		c.processTripEnd,
+	)
 }
 
-// 处理行程结束：查询最新 Drive 记录并推送
+// 带指数退避的重试执行器
+func (c *Client) tryWithBackoff(retryCount *int, maxRetries int, baseDelaySec int, action func() bool, logPrefix string) {
+	*retryCount++
+	if *retryCount > maxRetries {
+		log.Printf("⏹️ %s 重试超过 %d 次，放弃", logPrefix, maxRetries)
+		*retryCount = 0
+		return
+	}
+
+	delay := time.Duration(baseDelaySec*(1<<uint(*retryCount-1))) * time.Second
+	log.Printf("🔄 %s 第 %d 次尝试，等待 %.0f 秒...", logPrefix, *retryCount, delay.Seconds())
+
+	time.AfterFunc(delay, func() {
+		if action() {
+			*retryCount = 0 // 成功后重置
+		} else if *retryCount < maxRetries {
+			c.tryWithBackoff(retryCount, maxRetries, baseDelaySec, action, logPrefix)
+		} else {
+			*retryCount = 0
+		}
+	})
+}
+
+// 处理行程结束通知
 func (c *Client) processTripEnd() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -126,11 +174,48 @@ func (c *Client) processTripEnd() {
 	}
 
 	drive := &result.Drive
-	if drive.ID == c.lastDriveID || drive.ID == 0 {
+	if drive.ID == c.lastDriveID || drive.ID == 0 || drive.EndDate.IsZero() {
+		// 数据未就绪，进入指数退避重试
+		c.tryWithBackoff(&c.retryCountDrive, 3, c.cfg.PushDebounceSec, func() bool {
+			res, e := db.GetLatestDrive(c.cfg.CarID)
+			if e != nil || res == nil {
+				return false
+			}
+
+			d := &res.Drive
+			if d.ID == c.lastDriveID || d.ID == 0 || d.EndDate.IsZero() {
+				return false
+			}
+
+			// 短行程过滤
+			if d.Distance < 0.5 || d.DurationMin < 3 {
+				c.lastDriveID = d.ID
+				log.Printf("⏭️ 忽略无效短行程 (ID: %d, 距离: %.1fkm, 时长: %d分)", d.ID, d.Distance, d.DurationMin)
+				return true
+			}
+
+			// 数据完整 → 推送
+			c.lastDriveID = d.ID
+			c.doTripNotification(res) // 传入完整 DriveWithSOC
+			return true
+		}, "行程通知")
+		return
+	}
+
+	// 第一次查询就完整的情况
+	if drive.Distance < 0.5 || drive.DurationMin < 3 {
+		c.lastDriveID = drive.ID
+		log.Printf("⏭️ 忽略无效短行程 (ID: %d, 距离: %.1fkm, 时长: %d分)", drive.ID, drive.Distance, drive.DurationMin)
 		return
 	}
 
 	c.lastDriveID = drive.ID
+	c.doTripNotification(result)
+}
+
+// 发送行程通知
+func (c *Client) doTripNotification(result *db.DriveWithSOC) {
+	drive := &result.Drive
 
 	socUsed := result.StartSOC - result.EndSOC
 	rangeReduced := drive.StartIdealRangeKM - drive.EndIdealRangeKM
@@ -155,15 +240,13 @@ func (c *Client) processTripEnd() {
 	log.Printf("✅ 行程通知已推送 (ID: %d)", drive.ID)
 }
 
-// ==================== 充电通知 ====================
+// ==================== 充电通知（同样加上指数退避） ====================
 func (c *Client) handleChargingState(payload string) {
-	// 检测充电结束（Complete / Disconnected）
 	if strings.Contains(payload, "Complete") || strings.Contains(payload, "Disconnected") {
 		c.processChargeEnd()
 	}
 }
 
-// ==================== 充电通知 ====================
 func (c *Client) processChargeEnd() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -173,32 +256,43 @@ func (c *Client) processChargeEnd() {
 		return
 	}
 
+	// 如果充电记录还没完全结束（EndDate 为空等），进入重试
+	if charge.EndDate.IsZero() { // 根据你的实际结构体调整判断条件
+		c.tryWithBackoff(&c.retryCountCharge, 3, c.cfg.PushDebounceSec, func() bool {
+			ch, e := db.GetLatestCharge(c.cfg.CarID)
+			if e != nil || ch == nil || ch.ID == c.lastChargeID || ch.EndDate.IsZero() {
+				return false
+			}
+			c.lastChargeID = ch.ID
+			c.doChargeNotification(ch)
+			return true
+		}, "充电通知")
+		return
+	}
+
 	c.lastChargeID = charge.ID
+	c.doChargeNotification(charge)
+}
 
-	// ==================== 判断充电类型（快充 / 慢充） ====================
+// 发送充电通知
+func (c *Client) doChargeNotification(charge *models.Charge) { // 假设你的 db 类型
 	chargeType := "慢充 (AC)"
-
 	if charge.FastChargerPresent != nil && *charge.FastChargerPresent {
 		chargeType = "快充 (DC)"
 	} else if charge.ChargerPhases != nil && *charge.ChargerPhases == 0 {
 		chargeType = "快充 (DC)"
-	} else if charge.ChargerPower > 30 { // 功率辅助判断（单位 kW）
+	} else if charge.ChargerPower > 30 {
 		chargeType = "快充 (DC)"
 	}
-
-	socStart := float64(charge.StartBatteryLevel)
-	socEnd := float64(charge.EndBatteryLevel)
-	energyAdded := charge.ChargeEnergyAdded
-	rangeAdded := charge.EndIdealRangeKM - charge.StartIdealRangeKM
 
 	content := fmt.Sprintf(`时间: %s | 类型: %s
 充入: %.1f kWh | 电量: %.0f%%→%.0f%%
 增加: %.1f km | 耗时: %d分`,
 		charge.EndDate.Local().Format("15:04"),
 		chargeType,
-		energyAdded,
-		socStart, socEnd,
-		rangeAdded,
+		charge.ChargeEnergyAdded,
+		float64(charge.StartBatteryLevel), float64(charge.EndBatteryLevel),
+		charge.EndIdealRangeKM-charge.StartIdealRangeKM,
 		charge.DurationMin,
 	)
 
@@ -207,23 +301,32 @@ func (c *Client) processChargeEnd() {
 	if err := notifier.SendNotification(c.cfg.APIToken, title, content); err != nil {
 		log.Printf("❌ 充电通知推送失败: %v", err)
 	} else {
-		log.Printf("✅ 充电通知推送成功！类型: %s，充入 %.1f kWh", chargeType, energyAdded)
+		log.Printf("✅ 充电通知推送成功！类型: %s，充入 %.1f kWh", chargeType, charge.ChargeEnergyAdded)
 	}
 }
 
-// ==================== 哨兵模式通知 ====================
+// ==================== 哨兵模式通知（只在 P 档时触发） ====================
 func (c *Client) handleSentryMode(payload string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	isOn := strings.Contains(payload, "true") || strings.Contains(payload, "on") || strings.Contains(payload, "armed")
+	isOn := isSentryOn(payload)
 
+	// 只要不是 P 档（例如挂 D 档），就只更新状态，不推送任何通知
+	if c.lastShiftState != "P" {
+		c.lastSentry = isOn
+		return
+	}
+
+	// 以下只有在 P 档时才会推送
 	if isOn && !c.lastSentry {
 		title := fmt.Sprintf("🚗 %s 哨兵通知🚨", c.carName)
 		content := "🛑 已开启全方位扫描，守护车辆安全中..."
 		notifier.SendNotification(c.cfg.APIToken, title, content)
 		log.Println("✅ 哨兵开启通知已推送")
-	} else if !isOn && c.lastSentry {
+	}
+
+	if !isOn && c.lastSentry {
 		title := fmt.Sprintf("🚗 %s 哨兵通知🚨", c.carName)
 		content := "⭕️ 已关闭全方位扫描，节省电量中..."
 		notifier.SendNotification(c.cfg.APIToken, title, content)
@@ -231,4 +334,11 @@ func (c *Client) handleSentryMode(payload string) {
 	}
 
 	c.lastSentry = isOn
+}
+
+func isSentryOn(payload string) bool {
+	lower := strings.ToLower(payload)
+	return strings.Contains(lower, "true") ||
+		strings.Contains(lower, "on") ||
+		strings.Contains(lower, "armed")
 }
