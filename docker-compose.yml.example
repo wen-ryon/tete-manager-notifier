@@ -10,7 +10,7 @@ services:
       - DATABASE_NAME=teslamate
       - MQTT_HOST=mosquitto
       - CAR_ID=1 # 你的车辆ID，默认为1
-      - PUSH_DEBOUNCE_SECONDS=15 # 推送防抖动时间（秒）
+      - PUSH_DEBOUNCE_SECONDS=5 # 推送防抖动初始时间（秒）
     depends_on:
       - database
       - mosquitto

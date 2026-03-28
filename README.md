@@ -52,7 +52,7 @@
    | DATABASE_NAME | 数据库名称 | 否 | teslamate |
    | MQTT_HOST | MQTT 主机名 | 否 | mosquitto |
    | CAR_ID | 车辆 ID | 否 | 1 |
-   | PUSH_DEBOUNCE_SECONDS | 推送防抖动时间（秒） | 否 | 15 |
+   | PUSH_DEBOUNCE_SECONDS | 推送防抖动初始时间（秒） | 否 | 5 |
 
 3. **启动服务**
 
