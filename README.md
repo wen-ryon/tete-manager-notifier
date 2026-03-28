@@ -35,6 +35,7 @@
          - DATABASE_PASS=你的数据库密码
          - DATABASE_NAME=teslamate
          - MQTT_HOST=mosquitto
+         - CAR_ID=1
          - PUSH_DEBOUNCE_SECONDS=15
        depends_on:
          - database
