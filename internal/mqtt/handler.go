@@ -187,12 +187,12 @@ func (c *Client) processTripEnd() {
 				return false
 			}
 
-			// 短行程过滤
-			if d.Distance < 0.5 || d.DurationMin < 3 {
-				c.lastDriveID = d.ID
-				log.Printf("⏭️ 忽略无效短行程 (ID: %d, 距离: %.1fkm, 时长: %d分)", d.ID, d.Distance, d.DurationMin)
-				return true
-			}
+			// // 短行程过滤
+			// if d.Distance < 0.5 || d.DurationMin < 3 {
+			// 	c.lastDriveID = d.ID
+			// 	log.Printf("⏭️ 忽略无效短行程 (ID: %d, 距离: %.1fkm, 时长: %d分)", d.ID, d.Distance, d.DurationMin)
+			// 	return true
+			// }
 
 			// 数据完整 → 推送
 			c.lastDriveID = d.ID
@@ -203,11 +203,11 @@ func (c *Client) processTripEnd() {
 	}
 
 	// 第一次查询就完整的情况
-	if drive.Distance < 0.5 || drive.DurationMin < 3 {
-		c.lastDriveID = drive.ID
-		log.Printf("⏭️ 忽略无效短行程 (ID: %d, 距离: %.1fkm, 时长: %d分)", drive.ID, drive.Distance, drive.DurationMin)
-		return
-	}
+	// if drive.Distance < 0.5 || drive.DurationMin < 3 {
+	// 	c.lastDriveID = drive.ID
+	// 	log.Printf("⏭️ 忽略无效短行程 (ID: %d, 距离: %.1fkm, 时长: %d分)", drive.ID, drive.Distance, drive.DurationMin)
+	// 	return
+	// }
 
 	c.lastDriveID = drive.ID
 	c.doTripNotification(result)
@@ -226,7 +226,7 @@ func (c *Client) doTripNotification(result *db.DriveWithSOC) {
 
 	content := fmt.Sprintf(`时间: %s | 耗时: %d分 | 距离: %.1f km
 电量: %.0f%%→%.0f%% | 消耗: %.1f%%
-减少: %.1f km | 达成率: %.1f%%`,
+表显减少: %.1f km | 达成率: %.1f%%`,
 		drive.EndDate.Local().Format("15:04"),
 		drive.DurationMin,
 		drive.Distance,
@@ -287,7 +287,7 @@ func (c *Client) doChargeNotification(charge *models.Charge) { // 假设你的 d
 
 	content := fmt.Sprintf(`时间: %s | 类型: %s
 充入: %.1f kWh | 电量: %.0f%%→%.0f%%
-增加: %.1f km | 耗时: %d分`,
+表显增加: %.1f km | 耗时: %d分`,
 		charge.EndDate.Local().Format("15:04"),
 		chargeType,
 		charge.ChargeEnergyAdded,
