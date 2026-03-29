@@ -29,14 +29,14 @@
        image: wenryon/tete-notifier:latest
        restart: always
        environment:
-         - API_TOKEN=你的特特管家API_TOKEN
+         - API_TOKEN=你的特特管家完整的API地址
          - DATABASE_HOST=database
          - DATABASE_USER=teslamate
          - DATABASE_PASS=你的数据库密码
          - DATABASE_NAME=teslamate
          - MQTT_HOST=mosquitto
          - CAR_ID=1
-         - PUSH_DEBOUNCE_SECONDS=15
+         - PUSH_DEBOUNCE_SECONDS=5
        depends_on:
          - database
          - mosquitto
@@ -46,7 +46,7 @@
 
    | 环境变量 | 说明 | 必填 | 默认值 |
    |---------|------|------|--------|
-   | API_TOKEN | 特特管家的推送 Token | 是 | - |
+   | API_TOKEN | 特特管家的推送 API 地址 | 是 | - |
    | DATABASE_HOST | 数据库主机名 | 否 | database |
    | DATABASE_USER | 数据库用户名 | 否 | teslamate |
    | DATABASE_PASS | 数据库密码 | 是 | - |
@@ -73,8 +73,8 @@
 
 ## 获取 API_TOKEN
 
-1. 在「特特管家」iOS App 中获取推送 Token
-2. 将 Token 填入 `API_TOKEN` 环境变量
+1. 在「特特管家」iOS App 中获取推送 API
+2. 将 API 填入 `API_TOKEN` 环境变量
 
 ## 版本说明
 
