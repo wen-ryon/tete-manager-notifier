@@ -3,14 +3,14 @@ services:
     image: wenryon/tete-notifier:latest
     restart: always
     environment:
-      - API_TOKEN= # 输入特特管家的推送API Token
+      - API_TOKEN= #输入特特管家的完整推送API URL
       - DATABASE_HOST=database
       - DATABASE_USER=teslamate
-      - DATABASE_PASS= # 输入数据库的用户密码
+      - DATABASE_PASS= #输入数据库的用户密码
       - DATABASE_NAME=teslamate
       - MQTT_HOST=mosquitto
-      - CAR_ID=1 # 你的车辆ID，默认为1
-      - PUSH_DEBOUNCE_SECONDS=5 # 推送防抖动初始时间（秒）
+      - CAR_ID=1 #车辆ID，默认为1
+      - PUSH_DEBOUNCE_SECONDS=5 #推送防抖动初始时间（秒）
     depends_on:
       - database
       - mosquitto
