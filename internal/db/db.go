@@ -2,12 +2,15 @@ package db
 
 import (
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/wen-ryon/tete-manager-notifier/internal/config"
 	"github.com/wen-ryon/tete-manager-notifier/internal/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -16,9 +19,35 @@ func Init(cfg *config.Config) error {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=disable",
 		cfg.DBHost, cfg.DBUser, cfg.DBPass, cfg.DBName, cfg.DBPort)
 
+	newLogger := logger.New(
+		log.New(log.Writer(), "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             1 * time.Second,
+			LogLevel:                  logger.Error,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  true,
+		},
+	)
+
 	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	return err
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: newLogger,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return err
+	}
+
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	return nil
 }
 
 // GetCarName 获取车辆名称

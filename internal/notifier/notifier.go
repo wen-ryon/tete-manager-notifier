@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"runtime/debug"
 )
 
 type Payload struct {
@@ -14,6 +15,11 @@ type Payload struct {
 
 // SendNotification 发送统一通知
 func SendNotification(apiEndpoint, title, content string) error {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("推送通知 panic: %v\n%s", r, string(debug.Stack()))
+		}
+	}()
 	payload := Payload{
 		Title:   title,
 		Content: content,
