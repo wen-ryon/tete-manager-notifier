@@ -14,7 +14,8 @@
 
 ### 前提条件
 
-- 已运行 Teslamate（包含 database 和 mosquitto 服务）
+- 已运行 Teslamate v3.0 版本（包含 database 和 mosquitto 服务）
+- 其他 Teslamate 版本未经过验证
 - Docker 和 Docker Compose 已安装
 
 ### 安装步骤
