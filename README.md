@@ -4,8 +4,6 @@
 
 ## 通知样式
 
-## 功能展示
-
 ### 通知截图1
 ![通知截图1](./images/notification1.jpg)
 
@@ -24,8 +22,8 @@
 
 ### 前提条件
 
-- 已运行 Teslamate v3.0 版本（包含 database 和 mosquitto 服务）
-- 其他 Teslamate 版本未经过验证
+- 已运行 Teslamate（包含 database 和 mosquitto 服务）
+- 基于 Teslamate v3.0.0 开发，其他版本未经过验证
 - Docker 和 Docker Compose 已安装
 
 ### 安装步骤
@@ -51,13 +49,15 @@
        depends_on:
          - database #依赖数据库服务，同上HOST
          - mosquitto #依赖MQTT服务，同上HOST
+
+     # 如有多辆车，请再新增容器，修改CAR_ID（未经验证）
    ```
 
 2. **配置说明**
 
    | 环境变量 | 说明 | 必填 | 默认值 |
    |---------|------|------|--------|
-   | API_TOKEN | 特特管家的推送 API 地址 | 是 | - |
+   | API_TOKEN | 特特管家的完整推送 API 地址 | 是 | - |
    | DATABASE_HOST | 数据库主机名 | 否 | database |
    | DATABASE_USER | 数据库用户名 | 否 | teslamate |
    | DATABASE_PASS | 数据库密码 | 是 | - |
@@ -76,7 +76,7 @@
 
    Docker Compose 会自动检测变化，只重新创建新增的 `tete-notifier-1` 容器，不会影响其他正在运行的容器。
 
-   如果需要更新镜像版本，请先执行以下命令：
+   如果需要更新镜像版本，请执行以下命令：
 
    ```bash
    docker compose pull tete-notifier-1
