@@ -1,6 +1,6 @@
 # tete-manager-notifier
 
-为 Teslamate 自建用户打造的轻量通知工具。通过 MQTT 监听车辆状态，结合数据库查询，在行程结束时自动推送美观格式的通知到「特特管家」iOS App。还在持续完善中...工作繁忙更新稍慢...
+为 Teslamate 自建用户打造的轻量通知工具。通过 MQTT 监听车辆状态，结合数据库查询，在行程结束时自动推送美观格式的通知到「特特管家」iOS App。还在持续完善中...
 
 ## 功能特性
 
@@ -30,17 +30,17 @@
        image: wenryon/tete-notifier:latest
        restart: always
        environment:
-         - API_TOKEN=你的特特管家完整的API地址
-         - DATABASE_HOST=database
+         - API_TOKEN= #特特管家完整的API地址
+         - DATABASE_HOST=database #对应数据库服务名
          - DATABASE_USER=teslamate
-         - DATABASE_PASS=你的数据库密码
+         - DATABASE_PASS= #数据库密码
          - DATABASE_NAME=teslamate
-         - MQTT_HOST=mosquitto
-         - CAR_ID=1
-         - PUSH_DEBOUNCE_SECONDS=5
+         - MQTT_HOST=mosquitto #对应MQTT服务名
+         - CAR_ID=1 #车辆id 默认1
+         - PUSH_DEBOUNCE_SECONDS=5 #推送防抖动初始时间（秒） 默认5
        depends_on:
-         - database
-         - mosquitto
+         - database #依赖数据库服务，同上HOST
+         - mosquitto #依赖MQTT服务，同上HOST
    ```
 
 2. **配置说明**
@@ -66,6 +66,13 @@
 
    Docker Compose 会自动检测变化，只重新创建新增的 `tete-notifier-1` 容器，不会影响其他正在运行的容器。
 
+   如果需要更新镜像版本，请先执行以下命令：
+
+   ```bash
+   docker compose pull tete-notifier-1
+   docker compose up -d tete-notifier-1
+   ```
+
 4. **查看日志**
 
    ```bash
@@ -74,12 +81,13 @@
 
 ## 获取 API_TOKEN
 
-1. 在「特特管家」iOS App 中获取推送 API
+1. 在「特特管家」iOS App 中获取完整的推送 API 地址
 2. 将 API 填入 `API_TOKEN` 环境变量
 
 ## 版本说明
 
 - `v1.0.0` - 初始版本，支持行程结束、充电结束、哨兵模式状态变更自动通知
+- `v1.0.1` - 移除哨兵通知，新增充电开始通知，调整通知内容样式，优化推送逻辑
 
 ## 技术栈
 
