@@ -23,7 +23,7 @@
 ### 前提条件
 
 - 已运行 Teslamate（包含 database 和 mosquitto 服务）
-- 基于 Teslamate v3.0.0 开发，其他版本未经过验证
+- 基于 Teslamate v3.0.0 开发，其他版本未经过验证（有使用v2.1的车友反馈可以正常推送）
 - Docker 和 Docker Compose 已安装
 
 ### 安装步骤
